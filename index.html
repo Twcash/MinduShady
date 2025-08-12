@@ -614,13 +614,30 @@ function initGL(){
     defaultTexture = createDefaultTexture();
     setupBuffers();
 }
-
+function injectRoundFunction(src) {
+    const roundFunc = `
+float round(float x) {
+    return floor(x + 0.5);
+}
+vec2 round(vec2 v) {
+    return floor(v + 0.5);
+}
+vec3 round(vec3 v) {
+    return floor(v + 0.5);
+}
+vec4 round(vec4 v) {
+    return floor(v + 0.5);
+}
+`;
+    return roundFunc + "\n" + src;
+}
 function compileAndLinkShader(){
     clearErrorMarks();
-    let fragSourceRaw = editor.getValue();
+    const fragSourceRaw = editor.getValue();
     let fragSource = preprocessShaderSource(fragSourceRaw);
-    fragSource = autoInjectPrecision(fragSource);
     fragSource = injectRoundFunction(fragSource);
+    fragSource = autoInjectPrecision(fragSource);
+
     try {
         if(!gl) initGL();
         if(program){
