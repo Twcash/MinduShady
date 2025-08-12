@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MinduShady</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.10/codemirror.min.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.10/theme/dracula.min.css"/>
+<style>
+html, body {margin:0;padding:0;height:100%;background:#111;color:#ccc;font-family:monospace;overflow:hidden;}
+.container {display:flex;height:100vh;width:100vw;overflow:hidden;}
+.left-panel {width:480px;background:#222;padding:10px;box-sizing:border-box;display:flex;flex-direction:column;}
+.editor-container {flex-grow: 1;display: flex;flex-direction: column;}
+.CodeMirror {min-height: 100%!important;flex-grow: 1;}
+.right-panel {
+    width: 320px;
+    background: #222;
+    padding: 10px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.right-panel > h4 {
+    margin-top: 0;
+    color: #ccc;
+    font-weight: normal;
+    border-bottom: 1px solid #444;
+    padding-bottom: 6px;
+    user-select: none;
+}
+#uniformsList {
+    flex-grow: 1;
+    overflow-y: auto;
+    border: 1px solid #555;
+    background: #222;
+    padding: 8px;
+    box-sizing: border-box;
+    margin-top: 10px;
+    font-family: monospace;
+    color: #ccc;
+    border-radius: 4px;
+}
+.uniform-control {
+    border: 1px solid #555;
+    background: #222;
+    padding: 8px;
+    margin-bottom: 10px;
+    border-radius: 4px;
+}
+.uniform-label {
+    margin-bottom: 6px;
+    color: #ccc;
+    display: block;
+    font-weight: bold;
+}
+input[type="range"],
+input[type="number"],
+input[type="text"],
+select,
+button {
+    background: #333;
+    border: 1px solid #555;
+    color: #ccc;
+    font-family: monospace;
+    padding: 6px 8px;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+input[type="range"] {
+    width: 100%;
+}
+input[type="number"] {
+    width: 48%;
+}
+.vec2-inputs {
+    display: flex;
+    gap: 4%;
+    margin-bottom: 8px;
+}
+.vec3-inputs {
+    display: flex;
+    gap: 4%;
+    margin-bottom: 8px;
+}
+.vec4-inputs {
+    display: flex;
+    gap: 4%;
+    margin-bottom: 8px;
+}
+button#addUniformBtn, button#compileBtn {
+    background: #556;
+    border: none;
+    color: #eee;
+    padding: 8px;
+    margin-top: 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-weight: bold;
+    font-family: monospace;
+    transition: background-color 0.3s ease;
+}
+button#addUniformBtn:hover, button#compileBtn:hover {
+    background: #778;
+}
+#autoDetectUniforms {
+    margin-top: 10px;
+    cursor: pointer;
+}
+label[for="autoDetectUniforms"] {
+    user-select: none;
+    color: #ccc;
+    font-size: 14px;
+    margin-top: 8px;
+    display: inline-block;
+}
+#uniformsList::-webkit-scrollbar {
+    width: 8px;
+}
+#uniformsList::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+#uniformsList::-webkit-scrollbar-track {
+    background: #222;
+}
+label.uniform-label {color:#ccc;display:block;margin-bottom:4px;}
+.uniform-control {margin-bottom:12px;}
+input[type="range"] {width:100%;}
+input[type="number"] {width:48%;}
+.vec2-inputs {display:flex;gap:4%;}
+.vec3-inputs {display:flex;gap:4%;}
+.vec4-inputs {display:flex;gap:4%;}
+#glcanvas {flex-grow:1;background:black;display:block;}
+#errorPanel {position:fixed;top:10px;right:10px;width:350px;max-height:30vh;background:#440000cc;color:#ff5555;padding:10px;box-sizing:border-box;font-family:monospace;font-size:12px;border-radius:6px;overflow-y:auto;white-space:pre-wrap;z-index:9999;}
+#errorPanel.hidden {display:none;}
+.line-error-bg {background-color:#44000088!important;}
+.error-gutter-marker {color:#f55;font-weight:bold;}
+</style>
+</head>
+<body>
+<div class="container">
+    <div class="left-panel">
+        <h3>Fragment Shader</h3>
+        <div class="editor-container"><textarea id="shaderCode"></textarea></div>
+        <button id="compileBtn">Compile Shader</button>
+    </div>
+    <canvas id="glcanvas"></canvas>
+    <div class="right-panel">
+        <h4>Uniforms</h4>
+        <div id="uniformsList"></div>
+        <label><input type="checkbox" id="autoDetectUniforms" checked> Auto Detect Uniforms</label>
+    </div>
+</div>
+<div id="errorPanel" class="hidden"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.10/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.10/mode/clike/clike.min.js"></script>
+<script>
+const editor = CodeMirror.fromTextArea(document.getElementById("shaderCode"), {
+    mode:"x-shader/x-fragment",
+    theme:"dracula",
+    lineNumbers:true,
+    tabSize:4,
+    indentUnit:4,
+    autofocus:true,
+    gutters:["CodeMirror-linenumbers","error-gutter"]
+});
+
+const errorPanel = document.getElementById("errorPanel");
+const uniformsList = document.getElementById("uniformsList");
+
+let gl = null;
+let program = null;
+let posBuffer = null;
+let texBuffer = null;
+let posAttrib = -1;
+let texAttrib = -1;
+let uniformLocations = {};
+let uniformData = {};
+let textures = {};
+let detectedUniforms = [];
+let defaultTexture = null;
+let maxTextureUnits = 0;
+let startTime = null;
+
+function clearErrorMarks(){
+    editor.getAllMarks().forEach(mark => mark.clear());
+    editor.clearGutter("error-gutter");
+    for(let i = 0; i < editor.lineCount(); i++){
+        editor.removeLineClass(i, "background", "line-error-bg");
+    }
+}
+
+function markErrorLines(errorMsg){
+    clearErrorMarks();
+    const regex = /ERROR:\s*0:(\d+):/g;
+    let match;
+    while((match = regex.exec(errorMsg)) !== null){
+        const lineNum = parseInt(match[1], 10) - 1;
+        editor.addLineClass(lineNum, "background", "line-error-bg");
+        const marker = document.createElement("div");
+        marker.className = "error-gutter-marker";
+        marker.textContent = "●";
+        editor.setGutterMarker(lineNum, "error-gutter", marker);
+    }
+}
+
+function autoInjectPrecision(src) {
+    if (/precision\s+mediump\s+float\s*;/.test(src)) return src;
+    const lines = src.split('\n');
+    let insertIndex = 0;
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line.startsWith('#define') || line === '' || line.startsWith('//')) {
+            insertIndex = i + 1;
+        } else {
+            break;
+        }
+    }
+    lines.splice(insertIndex, 0, 'precision mediump float;');
+    return lines.join('\n');
+}
+
+function preprocessShaderSource(src){
+    return src.replace(/\buniform\s+time\s+(\w+)\s*;/g, "uniform float $1;");
+}
+
+function parseUniforms(code){
+    const uniforms = [];
+    const regex = /uniform\s+(float|vec2|vec3|vec4|int|bool|mat4|sampler2D)\s+(\w+)\s*;/g;
+
+    let m;
+    while((m = regex.exec(code)) !== null){
+        uniforms.push({type: m[1], name: m[2]});
+    }
+    return uniforms;
+}
+
+function createDefaultTexture(){
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    const white = new Uint8Array([255, 255, 255, 255]);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, white);
+    return tex;
+}
+
+function createUniformControl(name, type) {
+    const container = document.createElement("div");
+    container.style.display = "flex";
+    container.style.flexDirection = "column";
+    container.style.gap = "6px";
+    container.style.marginBottom = "10px";
+    container.style.padding = "6px";
+    container.style.background = "rgba(255,255,255,0.05)";
+    container.style.borderRadius = "6px";
+
+    const label = document.createElement("label");
+    label.textContent = name;
+    label.style.color = "#fff";
+    container.appendChild(label);
+
+    function syncFloatInputs(slider, textbox) {
+        slider.oninput = () => {
+            textbox.value = slider.value;
+            uniformData[name] = parseFloat(slider.value);
+        };
+        textbox.oninput = () => {
+            let val = parseFloat(textbox.value);
+            if (isNaN(val)) val = 0;
+            if (val < parseFloat(slider.min)) val = parseFloat(slider.min);
+            if (val > parseFloat(slider.max)) val = parseFloat(slider.max);
+            slider.value = val;
+            uniformData[name] = val;
+        };
+    }
+
+    if (type === "sampler2D") {
+        if (!uniformData[name]) uniformData[name] = defaultTexture;
+
+        const fileInput = document.createElement("input");
+        fileInput.type = "file";
+        fileInput.accept = "image/*";
+        fileInput.style.color = "#ccc";
+
+        const info = document.createElement("small");
+        info.style.color = "#999";
+        info.textContent = "Upload an image for this texture.";
+
+        fileInput.onchange = () => {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const img = new Image();
+            const url = URL.createObjectURL(file);
+
+            img.onload = () => {
+                const tex = gl.createTexture();
+                gl.bindTexture(gl.TEXTURE_2D, tex);
+                gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+                gl.generateMipmap(gl.TEXTURE_2D);
+
+                uniformData[name] = tex;
+
+                URL.revokeObjectURL(url);
+            };
+
+            img.onerror = () => {
+                alert("Failed to load image.");
+                uniformData[name] = defaultTexture;
+                URL.revokeObjectURL(url);
+            };
+
+            img.src = url;
+        };
+
+        container.appendChild(fileInput);
+        container.appendChild(info);
+
+    } else if(type === "int" || type === "bool") {
+    if (uniformData[name] === undefined) uniformData[name] = 0;
+
+    const controlsRow = document.createElement("div");
+    controlsRow.style.display = "flex";
+    controlsRow.style.gap = "8px";
+
+    const textbox = document.createElement("input");
+    textbox.type = "number";
+    textbox.step = 1;
+    textbox.min = 0;  // you can adjust min/max as needed
+    textbox.max = 100;
+    textbox.value = uniformData[name];
+
+    textbox.oninput = () => {
+        uniformData[name] = parseInt(textbox.value) || 0;
+    };
+
+    controlsRow.appendChild(textbox);
+    container.appendChild(controlsRow);
+} else if (type === "float") {
+        // Float with slider and textbox
+
+        // Initialize uniformData if not present
+        if (uniformData[name] === undefined) uniformData[name] = 0.5;
+
+        const controlsRow = document.createElement("div");
+        controlsRow.style.display = "flex";
+        controlsRow.style.gap = "8px";
+
+        const slider = document.createElement("input");
+        slider.type = "range";
+        slider.min = 0;
+        slider.max = 1;
+        slider.step = 0.01;
+        slider.value = uniformData[name];
+
+        const textbox = document.createElement("input");
+        textbox.type = "number";
+        textbox.step = 0.01;
+        textbox.min = 0;
+        textbox.max = 1;
+        textbox.value = uniformData[name];
+
+        controlsRow.appendChild(slider);
+        controlsRow.appendChild(textbox);
+        container.appendChild(controlsRow);
+
+        syncFloatInputs(slider, textbox);
+
+    } else if (type === "vec2") {
+        const inputs = [];
+        if (!uniformData[name]) uniformData[name] = [1, 1];
+        const containerVec2 = document.createElement("div");
+        containerVec2.className = "vec2-inputs";
+
+        for (let i = 0; i < 2; i++) {
+            const input = document.createElement("input");
+            input.type = "number";
+            input.step = 0.01;
+            input.value = uniformData[name][i];
+            input.min = 0;
+            input.oninput = () => {
+                uniformData[name][i] = parseFloat(input.value);
+            };
+            inputs.push(input);
+            containerVec2.appendChild(input);
+        }
+        container.appendChild(containerVec2);
+
+    } else if (type === "vec3") {
+        const inputs = [];
+        if (!uniformData[name]) uniformData[name] = [0, 0, 0];
+        const containerVec3 = document.createElement("div");
+        containerVec3.className = "vec3-inputs";
+
+        for (let i = 0; i < 3; i++) {
+            const input = document.createElement("input");
+            input.type = "number";
+            input.step = 0.01;
+            input.value = uniformData[name][i];
+            input.oninput = () => {
+                uniformData[name][i] = parseFloat(input.value);
+            };
+            inputs.push(input);
+            containerVec3.appendChild(input);
+        }
+        container.appendChild(containerVec3);
+
+    } else if (type === "vec4") {
+        const inputs = [];
+        if (!uniformData[name]) uniformData[name] = [0, 0, 0, 0];
+        const containerVec4 = document.createElement("div");
+        containerVec4.className = "vec4-inputs";
+
+        for (let i = 0; i < 4; i++) {
+            const input = document.createElement("input");
+            input.type = "number";
+            input.step = 0.01;
+            input.value = uniformData[name][i];
+            input.oninput = () => {
+                uniformData[name][i] = parseFloat(input.value);
+            };
+            inputs.push(input);
+            containerVec4.appendChild(input);
+        }
+        container.appendChild(containerVec4);
+    } else if (type === "time"){
+	const note = document.createElement("div");
+        note.textContent = "Incremental. No modification.";
+        container.appendChild(note);
+}
+
+    uniformsList.appendChild(container);
+} 
+function clearUniformControls(){
+    uniformsList.innerHTML = "";
+}
+
+function createUniformInputs(){
+    clearUniformControls();
+    for(let u of detectedUniforms){
+        createUniformControl(u.name, u.type);
+    }
+}
+
+function updateUniformLocations(){
+    uniformLocations = {};
+    if(!program) return;
+    for(let u of detectedUniforms){
+        uniformLocations[u.name] = gl.getUniformLocation(program, u.name);
+    }
+}
+
+function compileShader(src, type){
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, src);
+    gl.compileShader(shader);
+    if(!gl.getShaderParameter(shader, gl.COMPILE_STATUS)){
+        const error = gl.getShaderInfoLog(shader);
+        gl.deleteShader(shader);
+        throw new Error(error);
+    }
+    return shader;
+}
+
+function createProgram(fragSource){
+    const vertexSource = `
+        attribute vec2 aPosition;
+        attribute vec2 aTexCoord;
+        varying vec2 v_texCoords;
+        void main(){
+            v_texCoords = aTexCoord;
+            gl_Position = vec4(aPosition, 0.0, 1.0);
+        }
+    `;
+    const vertexShader = compileShader(vertexSource, gl.VERTEX_SHADER);
+    const fragmentShader = compileShader(fragSource, gl.FRAGMENT_SHADER);
+
+    const program = gl.createProgram();
+    gl.attachShader(program, vertexShader);
+    gl.attachShader(program, fragmentShader);
+    gl.linkProgram(program);
+    if(!gl.getProgramParameter(program, gl.LINK_STATUS)){
+        const error = gl.getProgramInfoLog(program);
+        gl.deleteProgram(program);
+        throw new Error(error);
+    }
+    gl.deleteShader(vertexShader);
+    gl.deleteShader(fragmentShader);
+
+    return program;
+}
+
+function setupBuffers(){
+    // Fullscreen quad
+    const positions = new Float32Array([
+        -1,-1,   1,-1,  -1,1,
+        -1,1,    1,-1,  1,1
+    ]);
+    posBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+    // Texcoords
+    const texcoords = new Float32Array([
+        0,0, 1,0, 0,1,
+        0,1, 1,0, 1,1
+    ]);
+    texBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, texBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, texcoords, gl.STATIC_DRAW);
+}
+
+function detectUniformsFromSource(src){
+    detectedUniforms = parseUniforms(src).filter(u => u.name !== 'gl_FragCoord' && u.name !== 'gl_Position');
+}
+
+function setUniforms(time) {
+    if (!program) return;
+    gl.useProgram(program);
+
+    // Keep track of the texture unit to assign for sampler2D
+    let textureUnitIndex = 0;
+
+    for (let u of detectedUniforms) {
+        const loc = uniformLocations[u.name];
+        if (!loc) continue;
+
+        if (u.name.toLowerCase() === "u_time") {
+            gl.uniform1f(loc, time / 60);
+            continue;
+        }
+
+        const val = uniformData[u.name];
+        switch (u.type) {
+            case "float":
+                gl.uniform1f(loc, val ?? 0);
+                break;
+            case "vec2":
+                gl.uniform2fv(loc, val ?? [1, 1]);
+                break;
+            case "vec3":
+                gl.uniform3fv(loc, val ?? [0, 0, 0]);
+                break;
+            case "vec4":
+                gl.uniform4fv(loc, val ?? [0, 0, 0, 0]);
+                break;
+            case "int":
+    gl.uniform1i(loc, val ?? 0);
+    break;
+            case "bool":
+                gl.uniform1i(loc, val ? 1 : 0);
+                break;
+            case "sampler2D":
+                if (textureUnitIndex >= maxTextureUnits) {
+                    console.warn(`Exceeded max texture units: ${maxTextureUnits}`);
+                    break;
+                }
+                gl.activeTexture(gl.TEXTURE0 + textureUnitIndex);
+                gl.bindTexture(gl.TEXTURE_2D, val || defaultTexture);
+                gl.uniform1i(loc, textureUnitIndex);
+                textureUnitIndex++;
+                break;
+        }
+    }
+}
+
+function draw(){
+    if(!gl || !program) return;
+    gl.clearColor(0,0,0,1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    gl.useProgram(program);
+
+    // Bind attributes
+    posAttrib = gl.getAttribLocation(program, "aPosition");
+    texAttrib = gl.getAttribLocation(program, "aTexCoord");
+
+    gl.enableVertexAttribArray(posAttrib);
+    gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+    gl.vertexAttribPointer(posAttrib, 2, gl.FLOAT, false, 0, 0);
+
+    gl.enableVertexAttribArray(texAttrib);
+    gl.bindBuffer(gl.ARRAY_BUFFER, texBuffer);
+    gl.vertexAttribPointer(texAttrib, 2, gl.FLOAT, false, 0, 0);
+
+    setUniforms(Date.now() - startTime);
+
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+}
+
+function initGL(){
+    const canvas = document.getElementById("glcanvas");
+    gl = canvas.getContext("webgl");
+    if(!gl){
+        alert("WebGL not supported");
+        throw new Error("WebGL not supported");
+    }
+    maxTextureUnits = gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS);
+    canvas.width = window.innerWidth - 480 - 320;
+    canvas.height = window.innerHeight;
+    canvas.style.width = canvas.width + "px";
+    canvas.style.height = canvas.height + "px";
+    gl.viewport(0, 0, canvas.width, canvas.height);
+
+    defaultTexture = createDefaultTexture();
+    setupBuffers();
+}
+
+function compileAndLinkShader(){
+    clearErrorMarks();
+    const fragSourceRaw = editor.getValue();
+    let fragSource = preprocessShaderSource(fragSourceRaw);
+    fragSource = autoInjectPrecision(fragSource);
+    try {
+        if(!gl) initGL();
+        if(program){
+            gl.deleteProgram(program);
+            program = null;
+        }
+        program = createProgram(fragSource);
+detectUniformsFromSource(fragSource);
+createUniformInputs();
+updateUniformLocations();
+        errorPanel.classList.add("hidden");
+        errorPanel.textContent = "";
+    } catch(e){
+        errorPanel.classList.remove("hidden");
+        errorPanel.textContent = e.message;
+        markErrorLines(e.message);
+        return false;
+    }
+    return true;
+}
+
+document.getElementById("compileBtn").onclick = () => {
+    if(compileAndLinkShader()) {
+        startTime = Date.now();
+    }
+};
+
+document.getElementById("autoDetectUniforms").onchange = (e) => {
+    if(e.target.checked){
+        compileAndLinkShader();
+    } else {
+        clearUniformControls();
+    }
+};
+
+function animate(){
+    requestAnimationFrame(animate);
+    draw();
+}
+
+window.addEventListener("resize", () => {
+    if(!gl) return;
+    const canvas = document.getElementById("glcanvas");
+    canvas.width = window.innerWidth - 480 - 320;
+    canvas.height = window.innerHeight;
+    canvas.style.width = canvas.width + "px";
+    canvas.style.height = canvas.height + "px";
+    gl.viewport(0, 0, canvas.width, canvas.height);
+});
+
+const defaultShaderCode = `
+// Example shader
+uniform float u_time;
+varying vec2 v_texCoords;
+
+void main(){
+    vec2 uv = v_texCoords;
+    float r = 0.5 + 0.5 * sin(u_time/5.0 + uv.x * 10.0);
+    float g = 0.5 + 0.5 * sin(u_time/5.0 + uv.y * 10.0 + 1.0);
+    float b = 0.5 + 0.5 * sin(u_time/5.0 + uv.x * 10.0 + uv.y * 10.0);
+    gl_FragColor = vec4(r, g, b, 1.0);
+}
+`.trim();
+
+editor.setValue(defaultShaderCode);
+
+initGL();
+compileAndLinkShader();
+startTime = Date.now();
+animate();
+</script>
+</body>
+</html>
+
