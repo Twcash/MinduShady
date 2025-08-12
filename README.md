@@ -1,52 +1,52 @@
-# A fragment shader editor purpose-built for Mindustry shaders.
+A fragment shader editor purpose-built for Mindustry shaders.
 
-# 
 
-# It’s slightly more picky than the base game: you cannot multiply Ints and Floats directly.
 
-# Simply cast Ints to Float or add .0 to any Int.
+It’s slightly more picky than the base game: you cannot multiply Ints and Floats directly.
 
-# 
+Simply cast Ints to Float or add .0 to any Int.
 
-# Features full uniform detection and easy modification. You can import images with sampler2D, modify float uniforms in real time, and u\_time updates incrementally (at roughly 60 ticks per second).
 
-# 
 
-# Any Mindustry shader can be imported and will work with no issues.
+Features full uniform detection and easy modification. You can import images with sampler2D, modify float uniforms in real time, and u\_time updates incrementally (at roughly 60 ticks per second).
 
-# 
 
-# Quick tip: Some shaders require a vec2 resolution (like arkycite.frag and cryofluid.frag). You must manually set this resolution in the uniforms panel.
 
-# 
+Any Mindustry shader can be imported and will work with no issues.
 
-# This does not contain:
 
-# 
 
-* # Many uniform types (feel free to suggest some in issues).
+Quick tip: Some shaders require a vec2 resolution (like arkycite.frag and cryofluid.frag). You must manually set this resolution in the uniforms panel.
 
-# 
 
-* # A tutorial — I expect you to know how to make shaders.
 
-# 
+This does not contain:
 
-* # A flawless WebGL port — this was a nightmare.
 
-# 
 
-* # Saving shaders.
+⦁ Many uniform types (feel free to suggest some in issues).
 
-# 
 
-* # Support for vertex shaders.
 
-# 
+⦁ A tutorial — I expect you to know how to make shaders.
 
-* # Bug-free operation (please report issues; I’d love to fix them).
 
-# 
 
-# And yes, I use this tool myself.
+⦁ A flawless WebGL port — this was a nightmare.
+
+
+
+⦁ Saving shaders.
+
+
+
+⦁ Support for vertex shaders.
+
+
+
+⦁ Bug-free operation (please report issues; I’d love to fix them).
+
+
+
+And yes, I use this tool myself.
 
