@@ -8,7 +8,7 @@ Simply cast Ints to Float or add .0 to any Int.
 
 
 
-Features full uniform detection and easy modification. You can import images with sampler2D, modify float uniforms in real time, and u\_time updates incrementally (at roughly 60 ticks per second).
+Features full uniform detection and easy modification. You can import images with sampler2D, modify float uniforms in real time, and u\_time updates incrementally (at 60 ticks per second).
 
 
 
