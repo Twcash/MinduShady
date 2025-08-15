@@ -599,7 +599,11 @@ function draw(){
 
 function initGL(){
     const canvas = document.getElementById("glcanvas");
-    gl = canvas.getContext("webgl");
+    gl = canvas.getContext("webgl", { alpha: true });
+    canvas.style.background = "transparent";
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.clearColor(0.0, 0.0, 0.0, 0.0);
     if(!gl){
         alert("WebGL not supported");
         throw new Error("WebGL not supported");
