@@ -472,18 +472,19 @@ function compileShader(src, type){
 }
 
 function createProgram(fragSource){
-    const vertexSource = `
-        attribute vec2 aPosition;
-		attribute vec2 aTexCoord;
-        attribute vec4 acolor;
-        varying vec2 v_texCoords;
-		varying vec4 v_color;
-        void main(){
-            v_texCoords = aTexCoord;
-			v_color = acolor;
-            gl_Position = vec4(aPosition, 0.0, 1.0);
-        }
-    `;
+	const vertexSource = `
+	    attribute vec2 aPosition;
+	    attribute vec2 aTexCoord;
+	    attribute vec4 aColor;
+	
+	    varying vec2 v_texCoords;
+	    varying vec4 v_color;
+	
+	    void main(){
+	        v_texCoords = aTexCoord;
+	        v_color = aColor;
+	        gl_Position = vec4(aPosition, 0.0, 1.0);
+	    };
     const vertexShader = compileShader(vertexSource, gl.VERTEX_SHADER);
     const fragmentShader = compileShader(fragSource, gl.FRAGMENT_SHADER);
 
